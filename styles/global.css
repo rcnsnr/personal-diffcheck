@@ -1,0 +1,15 @@
+/* styles/global.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Ek diff viewer stilleri */
+.diff-block {
+  @apply border p-2 mb-2;
+}
+.diff-block.equal {
+  @apply bg-dark-bg text-gray-100;
+}
+.diff-block.diff {
+  @apply bg-gray-800 text-white;
+}
