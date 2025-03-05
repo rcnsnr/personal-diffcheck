@@ -1,83 +1,213 @@
 // components/DiffViewer.js
-import { useEffect, useState } from 'react'
-import { diffLines, diffChars } from 'diff'
+import { useState, useEffect, useRef } from 'react'
+import { diffLines } from 'diff'
 
 export default function DiffViewer({ originalText, changedText }) {
   const [diffResult, setDiffResult] = useState([])
+  const [viewMode, setViewMode] = useState("unified") // "unified" or "split"
+  const [expanded, setExpanded] = useState({}) // track collapsed/expanded blocks
+  const blockRefs = useRef([])
+  const [currentDiffIndex, setCurrentDiffIndex] = useState(0)
+
+  const CONTEXT_THRESHOLD = 5 // number of lines to show before collapsing
 
   useEffect(() => {
-    // Whenever originalText or changedText changes, recalculate the diff
-    const lineDiffs = diffLines(originalText, changedText, {
-      newlineIsToken: true,
-      ignoreWhitespace: false
-    })
-
-    setDiffResult(lineDiffs)
+    // Recalculate diff whenever the input changes
+    const result = diffLines(originalText, changedText, { newlineIsToken: true })
+    setDiffResult(result)
+    setCurrentDiffIndex(0)
+    blockRefs.current = []
+    setExpanded({})
   }, [originalText, changedText])
 
-  // For each line that is added or removed, do a character diff to highlight
-  // the changed parts inside the line.
-  const mapLineDifferences = (value = '', added, removed) => {
-    // Split the chunk by newlines to handle multi-line in the chunk
-    const lines = value.split('\n')
-    // The last split may be an empty string if there's a trailing newline,
-    // we filter out blank lines from the trailing part to avoid extra empty lines.
-    const cleanedLines = lines[lines.length - 1] === '' ? lines.slice(0, -1) : lines
+  const toggleViewMode = () => {
+    setViewMode(viewMode === "unified" ? "split" : "unified")
+  }
 
-    return cleanedLines.map((line, index) => {
-      // If it's an unchanged block, just render normally
-      if (!added && !removed) {
+  // For toggling collapse/expand
+  const toggleExpand = (idx) => {
+    setExpanded(prev => ({ ...prev, [idx]: !prev[idx] }))
+  }
+
+  // Gather indices for changed blocks (added/removed)
+  const diffIndices = diffResult
+    .map((block, idx) => (block.added || block.removed) ? idx : null)
+    .filter(idx => idx !== null)
+
+  const scrollToDiff = (index) => {
+    if (blockRefs.current[index]) {
+      blockRefs.current[index].scrollIntoView({ behavior: "smooth", block: "center" })
+    }
+  }
+
+  const handleNextDiff = () => {
+    if (diffIndices.length === 0) return
+    let nextIndex = currentDiffIndex + 1
+    if (nextIndex >= diffIndices.length) nextIndex = 0
+    setCurrentDiffIndex(nextIndex)
+    scrollToDiff(diffIndices[nextIndex])
+  }
+
+  const handlePrevDiff = () => {
+    if (diffIndices.length === 0) return
+    let prevIndex = currentDiffIndex - 1
+    if (prevIndex < 0) prevIndex = diffIndices.length - 1
+    setCurrentDiffIndex(prevIndex)
+    scrollToDiff(diffIndices[prevIndex])
+  }
+
+  // Render for unified view
+  const renderUnifiedBlock = (block, idx) => {
+    if (!block.added && !block.removed) {
+      // Unchanged block with potential collapse
+      const lines = block.value.split('\n').filter(l => l !== "")
+      if (lines.length > CONTEXT_THRESHOLD && !expanded[idx]) {
+        const partial = lines.slice(0, 2).join('\n')
         return (
-          <div key={index} className="diff-line">
-            {line}
+          <div key={idx} className="diff-block equal whitespace-pre-wrap">
+            {partial}
+            <div className="text-center">
+              <button onClick={() => toggleExpand(idx)} className="text-xs text-pastel-blue mt-1">
+                Show More
+              </button>
+            </div>
+          </div>
+        )
+      } else if (lines.length > CONTEXT_THRESHOLD && expanded[idx]) {
+        return (
+          <div key={idx} className="diff-block equal whitespace-pre-wrap">
+            {block.value}
+            <div className="text-center">
+              <button onClick={() => toggleExpand(idx)} className="text-xs text-pastel-blue mt-1">
+                Show Less
+              </button>
+            </div>
+          </div>
+        )
+      } else {
+        // If not big enough to collapse
+        return (
+          <div key={idx} className="diff-block equal whitespace-pre-wrap">
+            {block.value}
           </div>
         )
       }
-
-      // For lines that are added or removed, we do a char diff with empty string
-      // if we truly want to highlight each character as changed.
-      // However, to highlight partial changes, we would need to compare to a matching line from the other text,
-      // which is more complex. For simplicity, we'll just highlight the entire line
-      // and do a secondary char-level approach comparing each line with an empty string.
-      
-      // Example approach: highlight the entire line
-      // For a more advanced approach, you could pair each removed line with an added line if lengths match, etc.
-      const charDiff = diffChars('', line)
+    } else {
+      // added or removed block
       return (
         <div
-          key={index}
-          className={`diff-line ${added ? 'added' : ''} ${removed ? 'removed' : ''}`}
+          key={idx}
+          ref={el => blockRefs.current[idx] = el}
+          className="diff-block diff whitespace-pre-wrap"
+          style={{ backgroundColor: block.added ? 'rgba(0,255,0,0.2)' : 'rgba(255,0,0,0.2)' }}
         >
-          {charDiff.map((part, i) => {
-            // part.added || part.removed => highlight
-            const className = part.added
-              ? 'diff-char added'
-              : part.removed
-              ? 'diff-char removed'
-              : ''
-            return (
-              <span key={i} className={className}>
-                {part.value}
-              </span>
-            )
-          })}
+          {block.value}
         </div>
       )
-    })
+    }
+  }
+
+  // Render for split view
+  const renderSplitBlock = (block, idx) => {
+    if (!block.added && !block.removed) {
+      // Unchanged block
+      const lines = block.value.split('\n').filter(l => l !== "")
+      if (lines.length > CONTEXT_THRESHOLD && !expanded[idx]) {
+        const partial = lines.slice(0, 2).join('\n')
+        return (
+          <div key={idx} className="grid grid-cols-2 gap-2 border p-2 mb-2">
+            <div className="whitespace-pre-wrap">{partial}</div>
+            <div className="whitespace-pre-wrap">{partial}</div>
+            <div className="col-span-2 text-center">
+              <button onClick={() => toggleExpand(idx)} className="text-xs text-pastel-blue mt-1">
+                Show More
+              </button>
+            </div>
+          </div>
+        )
+      } else if (lines.length > CONTEXT_THRESHOLD && expanded[idx]) {
+        return (
+          <div key={idx} className="grid grid-cols-2 gap-2 border p-2 mb-2">
+            <div className="whitespace-pre-wrap">{block.value}</div>
+            <div className="whitespace-pre-wrap">{block.value}</div>
+            <div className="col-span-2 text-center">
+              <button onClick={() => toggleExpand(idx)} className="text-xs text-pastel-blue mt-1">
+                Show Less
+              </button>
+            </div>
+          </div>
+        )
+      } else {
+        return (
+          <div key={idx} className="grid grid-cols-2 gap-2 border p-2 mb-2">
+            <div className="whitespace-pre-wrap">{block.value}</div>
+            <div className="whitespace-pre-wrap">{block.value}</div>
+          </div>
+        )
+      }
+    } else if (block.removed) {
+      // Removed => highlight in left column
+      return (
+        <div
+          key={idx}
+          ref={el => blockRefs.current[idx] = el}
+          className="grid grid-cols-2 gap-2 border p-2 mb-2"
+          style={{ backgroundColor: 'rgba(255,0,0,0.2)' }}
+        >
+          <div className="whitespace-pre-wrap">{block.value}</div>
+          <div className="whitespace-pre-wrap"></div>
+        </div>
+      )
+    } else if (block.added) {
+      // Added => highlight in right column
+      return (
+        <div
+          key={idx}
+          ref={el => blockRefs.current[idx] = el}
+          className="grid grid-cols-2 gap-2 border p-2 mb-2"
+          style={{ backgroundColor: 'rgba(0,255,0,0.2)' }}
+        >
+          <div className="whitespace-pre-wrap"></div>
+          <div className="whitespace-pre-wrap">{block.value}</div>
+        </div>
+      )
+    }
   }
 
   return (
-    <div>
-      <h2 className="text-2xl mb-2 text-center">Diff Results</h2>
-      <div className="bg-gray-700 p-4 rounded">
-        {diffResult.map((part, idx) => {
-          return (
-            <div key={idx}>
-              {mapLineDifferences(part.value, part.added, part.removed)}
-            </div>
-          )
-        })}
+    <div className="mt-4">
+      <div className="flex justify-between items-center mb-4">
+        {/* Navigation Buttons */}
+        <div>
+          <button
+            onClick={handlePrevDiff}
+            className="px-3 py-1 bg-gray-700 rounded mr-2 text-xs"
+          >
+            Previous Diff
+          </button>
+          <button
+            onClick={handleNextDiff}
+            className="px-3 py-1 bg-gray-700 rounded text-xs"
+          >
+            Next Diff
+          </button>
+        </div>
+        {/* View Mode Toggle */}
+        <div>
+          <button
+            onClick={toggleViewMode}
+            className="px-3 py-1 bg-gray-700 rounded text-xs"
+          >
+            {viewMode === "unified" ? "Switch to Split View" : "Switch to Unified View"}
+          </button>
+        </div>
       </div>
+
+      {/* Render Diff Blocks */}
+      {viewMode === "unified"
+        ? diffResult.map((block, idx) => renderUnifiedBlock(block, idx))
+        : diffResult.map((block, idx) => renderSplitBlock(block, idx))
+      }
     </div>
   )
 }

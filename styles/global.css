@@ -4,22 +4,31 @@
 @tailwind utilities;
 
 /* Additional diff viewer styles */
+.diff-block {
+  @apply border p-2 mb-2;
+}
+.diff-block.equal {
+  @apply bg-dark-bg text-gray-100;
+}
+.diff-block.diff {
+  @apply bg-gray-800 text-white;
+}
+
+/* For line-level highlighting */
 .diff-line {
   @apply whitespace-pre-wrap;
 }
-
 .diff-line.added {
   @apply bg-highlight-add;
 }
-
 .diff-line.removed {
   @apply bg-highlight-remove;
 }
 
+/* For character-level highlighting if needed */
 .diff-char.added {
   @apply bg-pastel-green text-dark-bg;
 }
-
 .diff-char.removed {
-  @apply bg-pastel-purple text-dark-bg;
+  @apply bg-pastel-purple text-dark-bg line-through;
 }
