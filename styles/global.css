@@ -3,13 +3,23 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Ek diff viewer stilleri */
-.diff-block {
-  @apply border p-2 mb-2;
+/* Additional diff viewer styles */
+.diff-line {
+  @apply whitespace-pre-wrap;
 }
-.diff-block.equal {
-  @apply bg-dark-bg text-gray-100;
+
+.diff-line.added {
+  @apply bg-highlight-add;
 }
-.diff-block.diff {
-  @apply bg-gray-800 text-white;
+
+.diff-line.removed {
+  @apply bg-highlight-remove;
+}
+
+.diff-char.added {
+  @apply bg-pastel-green text-dark-bg;
+}
+
+.diff-char.removed {
+  @apply bg-pastel-purple text-dark-bg;
 }
